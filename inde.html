@@ -1,0 +1,1553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>NEXUS — ENV MONITOR</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;600;700;800&family=Syne+Mono&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+  <style>
+    :root {
+      --void:     #080b12;
+      --deep:     #0d1220;
+      --panel:    #111827;
+      --surface:  #1a2235;
+      --border:   #1e2d45;
+      --border-b: #253550;
+      --muted:    #2a3d5a;
+      --dim:      #4a6080;
+      --text:     #c8d8e8;
+      --bright:   #e8f2ff;
+      --cyan:     #00e5ff;
+      --cyan-dim: #007a8a;
+      --amber:    #ffb800;
+      --amber-dim:#6b4c00;
+      --green:    #00ff88;
+      --green-dim:#005533;
+      --red:      #ff3d6e;
+      --red-dim:  #6b0020;
+      --purple:   #b060ff;
+      --r: 4px;
+      --r2: 8px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Syne', sans-serif;
+      background: var(--void);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+      position: relative;
+    }
+
+    /* Scanline overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,229,255,.012) 2px,
+        rgba(0,229,255,.012) 4px
+      );
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    /* Grid bg */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(var(--border) 1px, transparent 1px),
+        linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 60px 60px;
+      background-position: center center;
+      opacity: .18;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ══════════════════════
+       HEADER
+    ══════════════════════ */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(8,11,18,.92);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 32px;
+      gap: 0;
+    }
+
+    header::after {
+      content: '';
+      position: absolute;
+      bottom: -1px;
+      left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+      animation: scanH 4s ease-in-out infinite;
+    }
+
+    @keyframes scanH {
+      0%, 100% { opacity: 0; transform: scaleX(0); }
+      50% { opacity: 1; transform: scaleX(1); }
+    }
+
+    .brand-wrap {
+      padding: 14px 0;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-right: 48px;
+      border-right: 1px solid var(--border);
+      padding-right: 48px;
+    }
+
+    .brand-icon {
+      width: 36px; height: 36px;
+      border: 1.5px solid var(--cyan);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .brand-icon::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at center, rgba(0,229,255,.2) 0%, transparent 70%);
+    }
+
+    .brand-icon svg {
+      width: 18px; height: 18px;
+      stroke: var(--cyan);
+      fill: none;
+      stroke-width: 1.5;
+    }
+
+    .brand-text { display: flex; flex-direction: column; gap: 1px; }
+
+    .brand-name {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: 1.1rem;
+      letter-spacing: .15em;
+      text-transform: uppercase;
+      color: var(--bright);
+    }
+
+    .brand-sub {
+      font-family: 'Space Mono', monospace;
+      font-size: .58rem;
+      color: var(--cyan);
+      letter-spacing: .25em;
+      text-transform: uppercase;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: stretch;
+      height: 100%;
+    }
+
+    .nav-link {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 24px;
+      font-family: 'Syne', sans-serif;
+      font-size: .72rem;
+      font-weight: 700;
+      letter-spacing: .15em;
+      text-transform: uppercase;
+      color: var(--dim);
+      cursor: pointer;
+      border: none;
+      background: none;
+      position: relative;
+      transition: color .2s;
+    }
+
+    .nav-link::before {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 2px;
+      background: var(--cyan);
+      transform: scaleX(0);
+      transition: transform .2s;
+    }
+
+    .nav-link.active { color: var(--bright); }
+    .nav-link.active::before { transform: scaleX(1); }
+    .nav-link:hover { color: var(--text); }
+
+    .status-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 8px var(--green);
+      animation: blink 1.8s ease-in-out infinite;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: .3; }
+    }
+
+    .sys-info {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .sys-stat {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 2px;
+    }
+
+    .sys-stat-label {
+      font-family: 'Space Mono', monospace;
+      font-size: .52rem;
+      color: var(--dim);
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+
+    .sys-stat-val {
+      font-family: 'Space Mono', monospace;
+      font-size: .7rem;
+      color: var(--cyan);
+    }
+
+    /* ══════════════════════
+       PAGES
+    ══════════════════════ */
+    .page { display: none; position: relative; z-index: 1; }
+    .page.active { display: block; }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 28px 24px 60px;
+    }
+
+    /* ══════════════════════
+       PAGE TITLE
+    ══════════════════════ */
+    .page-header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      margin-bottom: 24px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .page-title-wrap { display: flex; flex-direction: column; gap: 4px; }
+
+    .page-breadcrumb {
+      font-family: 'Space Mono', monospace;
+      font-size: .62rem;
+      color: var(--cyan);
+      letter-spacing: .2em;
+      text-transform: uppercase;
+    }
+
+    .page-title {
+      font-weight: 800;
+      font-size: 2rem;
+      letter-spacing: -.01em;
+      color: var(--bright);
+      line-height: 1;
+    }
+
+    /* ══════════════════════
+       FILTER STRIP
+    ══════════════════════ */
+    .filter-strip {
+      background: var(--deep);
+      border: 1px solid var(--border);
+      border-radius: var(--r2);
+      padding: 16px 20px;
+      margin-bottom: 24px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      gap: 14px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .filter-strip::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--cyan-dim), transparent);
+    }
+
+    .filter-group {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .filter-label {
+      font-family: 'Space Mono', monospace;
+      font-size: .55rem;
+      font-weight: 700;
+      letter-spacing: .22em;
+      text-transform: uppercase;
+      color: var(--dim);
+    }
+
+    .filter-strip input,
+    .filter-strip select {
+      font-family: 'Space Mono', monospace;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: var(--r);
+      font-size: .78rem;
+      padding: 7px 12px;
+      outline: none;
+      transition: border-color .2s, box-shadow .2s;
+      min-width: 120px;
+      -webkit-appearance: none;
+    }
+
+    .filter-strip input:focus,
+    .filter-strip select:focus {
+      border-color: var(--cyan);
+      box-shadow: 0 0 0 2px rgba(0,229,255,.1);
+    }
+
+    .filter-strip select option { background: var(--panel); }
+
+    .filter-strip input[type="date"]::-webkit-calendar-picker-indicator {
+      filter: invert(1) opacity(.4);
+    }
+
+    .quick-chips {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-left: auto;
+    }
+
+    .chip {
+      padding: 5px 14px;
+      border-radius: 2px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--dim);
+      font-family: 'Space Mono', monospace;
+      font-size: .65rem;
+      font-weight: 700;
+      letter-spacing: .08em;
+      cursor: pointer;
+      transition: all .18s;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .chip:hover {
+      border-color: var(--cyan);
+      color: var(--cyan);
+      background: rgba(0,229,255,.06);
+      box-shadow: 0 0 12px rgba(0,229,255,.1);
+    }
+
+    .live-toggle-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: 'Space Mono', monospace;
+      font-size: .65rem;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--dim);
+      cursor: pointer;
+      user-select: none;
+      padding: 6px 14px;
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      background: transparent;
+      transition: all .18s;
+    }
+
+    .live-toggle-wrap input { display: none; }
+
+    .live-toggle-wrap.on {
+      border-color: var(--green-dim);
+      color: var(--green);
+      background: rgba(0,255,136,.05);
+      box-shadow: 0 0 12px rgba(0,255,136,.1);
+    }
+
+    .live-dot-sm {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 6px var(--green);
+      animation: blink 1.8s infinite;
+    }
+
+    /* ══════════════════════
+       STAT CARDS
+    ══════════════════════ */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    @media (max-width: 760px) { .stats-grid { grid-template-columns: 1fr 1fr; } }
+
+    .stat-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--r2);
+      padding: 20px 18px;
+      position: relative;
+      overflow: hidden;
+      transition: border-color .25s;
+    }
+
+    .stat-card:hover { border-color: var(--border-b); }
+
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      transition: opacity .3s;
+    }
+
+    .stat-card:hover::before { opacity: 1; }
+
+    .stat-card.c-amber::after {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--amber), transparent);
+    }
+
+    .stat-card.c-cyan::after {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+    }
+
+    .stat-card.c-red::after {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--red), transparent);
+    }
+
+    .stat-card.c-purple::after {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--purple), transparent);
+    }
+
+    .stat-eyebrow {
+      font-family: 'Space Mono', monospace;
+      font-size: .58rem;
+      letter-spacing: .2em;
+      text-transform: uppercase;
+      color: var(--dim);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .live-badge {
+      font-size: .52rem;
+      letter-spacing: .1em;
+      background: rgba(0,255,136,.15);
+      color: var(--green);
+      padding: 2px 6px;
+      border-radius: 2px;
+      border: 1px solid var(--green-dim);
+    }
+
+    .stat-val {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: 3rem;
+      line-height: 1;
+      letter-spacing: -.02em;
+      transition: all .3s;
+    }
+
+    .c-amber .stat-val { color: var(--amber); }
+    .c-cyan .stat-val  { color: var(--cyan); }
+    .c-red .stat-val   { color: var(--red); }
+    .c-purple .stat-val { color: var(--purple); }
+
+    .stat-unit {
+      font-family: 'Space Mono', monospace;
+      font-size: .9rem;
+      font-weight: 400;
+      margin-left: 4px;
+      opacity: .7;
+    }
+
+    .stat-corner {
+      position: absolute;
+      bottom: 10px; right: 14px;
+      font-family: 'Space Mono', monospace;
+      font-size: .5rem;
+      color: var(--muted);
+      letter-spacing: .1em;
+      text-transform: uppercase;
+    }
+
+    /* Corner decorations */
+    .stat-card-corner {
+      position: absolute;
+      width: 8px; height: 8px;
+    }
+
+    .stat-card-corner.tl { top: 8px; left: 8px; border-top: 1px solid var(--border-b); border-left: 1px solid var(--border-b); }
+    .stat-card-corner.br { bottom: 8px; right: 8px; border-bottom: 1px solid var(--border-b); border-right: 1px solid var(--border-b); }
+
+    /* ══════════════════════
+       CHART
+    ══════════════════════ */
+    .chart-panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--r2);
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+
+    .chart-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 22px;
+      border-bottom: 1px solid var(--border);
+      background: var(--deep);
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .chart-title {
+      font-weight: 800;
+      font-size: .9rem;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--bright);
+    }
+
+    .chart-title span {
+      font-family: 'Space Mono', monospace;
+      font-size: .65rem;
+      font-weight: 400;
+      color: var(--dim);
+      margin-left: 10px;
+      letter-spacing: .12em;
+    }
+
+    .data-pill {
+      font-family: 'Space Mono', monospace;
+      font-size: .65rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--cyan);
+      padding: 4px 12px;
+      border-radius: 2px;
+      letter-spacing: .06em;
+    }
+
+    .chart-body { padding: 20px 22px 16px; }
+
+    /* ══════════════════════
+       TABLE
+    ══════════════════════ */
+    .table-panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--r2);
+      overflow: hidden;
+    }
+
+    .table-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 22px;
+      border-bottom: 1px solid var(--border);
+      background: var(--deep);
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .table-topbar-title {
+      font-weight: 800;
+      font-size: .88rem;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--bright);
+    }
+
+    .tbl-controls {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .tbl-input, .tbl-select {
+      font-family: 'Space Mono', monospace;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: var(--r);
+      padding: 5px 10px;
+      font-size: .72rem;
+      outline: none;
+      transition: border-color .2s;
+      -webkit-appearance: none;
+    }
+
+    .tbl-input:focus, .tbl-select:focus {
+      border-color: var(--cyan);
+      box-shadow: 0 0 0 2px rgba(0,229,255,.08);
+    }
+
+    table { width: 100%; border-collapse: collapse; }
+
+    thead th {
+      padding: 10px 22px;
+      text-align: left;
+      font-family: 'Space Mono', monospace;
+      font-size: .6rem;
+      font-weight: 700;
+      letter-spacing: .2em;
+      text-transform: uppercase;
+      color: var(--dim);
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background .12s;
+    }
+
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: rgba(0,229,255,.03); }
+
+    tbody tr.latest-row {
+      background: rgba(255,184,0,.04);
+      border-left: 2px solid var(--amber);
+    }
+
+    tbody td { padding: 11px 22px; }
+
+    .tag-time {
+      font-family: 'Space Mono', monospace;
+      font-size: .72rem;
+      color: var(--dim);
+    }
+
+    .tag-temp {
+      display: inline-block;
+      background: rgba(255,184,0,.08);
+      border: 1px solid rgba(255,184,0,.25);
+      color: var(--amber);
+      font-family: 'Space Mono', monospace;
+      font-weight: 700;
+      font-size: .73rem;
+      padding: 3px 10px;
+      border-radius: 2px;
+    }
+
+    .tag-hum {
+      display: inline-block;
+      background: rgba(0,229,255,.08);
+      border: 1px solid rgba(0,229,255,.2);
+      color: var(--cyan);
+      font-family: 'Space Mono', monospace;
+      font-weight: 700;
+      font-size: .73rem;
+      padding: 3px 10px;
+      border-radius: 2px;
+    }
+
+    .empty-state {
+      padding: 40px;
+      text-align: center;
+      color: var(--dim);
+      font-family: 'Space Mono', monospace;
+      font-size: .78rem;
+      letter-spacing: .06em;
+    }
+
+    .pag-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 22px;
+      border-top: 1px solid var(--border);
+      flex-wrap: wrap;
+      gap: 10px;
+      background: var(--deep);
+    }
+
+    .pag-row small {
+      font-family: 'Space Mono', monospace;
+      font-size: .65rem;
+      color: var(--dim);
+    }
+
+    .pag-btns { display: flex; align-items: center; gap: 8px; }
+
+    .pag-btn {
+      font-family: 'Space Mono', monospace;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: var(--r);
+      padding: 5px 14px;
+      font-size: .68rem;
+      font-weight: 700;
+      letter-spacing: .06em;
+      cursor: pointer;
+      transition: all .18s;
+      text-transform: uppercase;
+    }
+
+    .pag-btn:disabled { opacity: .3; cursor: not-allowed; }
+
+    .pag-btn:not(:disabled):hover {
+      border-color: var(--cyan);
+      color: var(--cyan);
+      box-shadow: 0 0 10px rgba(0,229,255,.12);
+    }
+
+    .pag-info {
+      font-family: 'Space Mono', monospace;
+      font-size: .65rem;
+      color: var(--dim);
+    }
+
+    /* ══════════════════════
+       CONTROLS PAGE
+    ══════════════════════ */
+    .controls-layout {
+      display: grid;
+      grid-template-columns: 1fr 260px;
+      gap: 20px;
+    }
+
+    @media (max-width: 768px) { .controls-layout { grid-template-columns: 1fr; } }
+
+    .ctrl-panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--r2);
+      overflow: hidden;
+    }
+
+    .ctrl-panel-head {
+      padding: 14px 22px;
+      border-bottom: 1px solid var(--border);
+      background: var(--deep);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .ctrl-panel-head-left h3 {
+      font-weight: 800;
+      font-size: .88rem;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--bright);
+    }
+
+    .ctrl-panel-head-left p {
+      font-family: 'Space Mono', monospace;
+      font-size: .6rem;
+      color: var(--dim);
+      margin-top: 2px;
+      letter-spacing: .08em;
+    }
+
+    .ctrl-panel-body { padding: 8px 0; }
+
+    /* LED rows */
+    .led-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 22px;
+      border-bottom: 1px solid var(--border);
+      transition: background .15s;
+    }
+
+    .led-row:last-child { border-bottom: none; }
+    .led-row:hover { background: rgba(255,255,255,.02); }
+
+    .led-info { display: flex; align-items: center; gap: 16px; }
+
+    .led-orb {
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      border: 1.5px solid var(--border-b);
+      position: relative;
+      transition: all .3s;
+      flex-shrink: 0;
+    }
+
+    .led-row.on.red    .led-orb { background: #ff3d6e; border-color: #ff3d6e; box-shadow: 0 0 10px #ff3d6e, 0 0 20px rgba(255,61,110,.4); }
+    .led-row.on.green  .led-orb { background: #00ff88; border-color: #00ff88; box-shadow: 0 0 10px #00ff88, 0 0 20px rgba(0,255,136,.4); }
+    .led-row.on.blue   .led-orb { background: #00e5ff; border-color: #00e5ff; box-shadow: 0 0 10px #00e5ff, 0 0 20px rgba(0,229,255,.4); }
+    .led-row.on.yellow .led-orb { background: #ffb800; border-color: #ffb800; box-shadow: 0 0 10px #ffb800, 0 0 20px rgba(255,184,0,.4); }
+    .led-row.on.white  .led-orb { background: #c8d8e8; border-color: #c8d8e8; box-shadow: 0 0 10px #c8d8e8, 0 0 20px rgba(200,216,232,.3); }
+
+    .led-text-wrap {}
+
+    .led-name {
+      font-weight: 700;
+      font-size: .82rem;
+      letter-spacing: .04em;
+      color: var(--text);
+    }
+
+    .led-status {
+      font-family: 'Space Mono', monospace;
+      font-size: .58rem;
+      color: var(--dim);
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      margin-top: 2px;
+      transition: color .2s;
+    }
+
+    .led-row.on .led-status { color: var(--green); }
+
+    /* Toggle */
+    .toggle {
+      width: 44px; height: 22px;
+      border-radius: 999px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      position: relative;
+      cursor: pointer;
+      transition: all .2s;
+      flex-shrink: 0;
+    }
+
+    .toggle.on {
+      background: rgba(0,229,255,.2);
+      border-color: var(--cyan);
+      box-shadow: 0 0 8px rgba(0,229,255,.2);
+    }
+
+    .toggle::after {
+      content: '';
+      position: absolute;
+      top: 2px; left: 2px;
+      width: 16px; height: 16px;
+      border-radius: 50%;
+      background: var(--dim);
+      transition: transform .22s cubic-bezier(.2,.9,.3,1.2), background .2s;
+    }
+
+    .toggle.on::after {
+      transform: translateX(22px);
+      background: var(--cyan);
+      box-shadow: 0 0 6px var(--cyan);
+    }
+
+    /* Quick Actions */
+    .action-btn {
+      width: 100%;
+      padding: 12px;
+      border-radius: var(--r);
+      border: 1px solid var(--border);
+      font-family: 'Space Mono', monospace;
+      font-size: .72rem;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: all .18s;
+      margin-bottom: 10px;
+      background: var(--panel);
+    }
+
+    .action-btn:last-child { margin-bottom: 0; }
+
+    .action-btn.all-off {
+      color: var(--red);
+      border-color: rgba(255,61,110,.3);
+      background: rgba(255,61,110,.05);
+    }
+
+    .action-btn.all-on {
+      color: var(--green);
+      border-color: rgba(0,255,136,.3);
+      background: rgba(0,255,136,.05);
+    }
+
+    .action-btn.all-off:hover {
+      border-color: var(--red);
+      background: rgba(255,61,110,.1);
+      box-shadow: 0 0 12px rgba(255,61,110,.15);
+    }
+
+    .action-btn.all-on:hover {
+      border-color: var(--green);
+      background: rgba(0,255,136,.1);
+      box-shadow: 0 0 12px rgba(0,255,136,.15);
+    }
+
+    .section-label {
+      font-family: 'Space Mono', monospace;
+      font-size: .58rem;
+      letter-spacing: .2em;
+      text-transform: uppercase;
+      color: var(--dim);
+      margin-bottom: 14px;
+      display: block;
+    }
+
+    /* Hover pulse */
+    @keyframes pulseGlow {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(0,229,255,.2); }
+      50% { box-shadow: 0 0 0 6px rgba(0,229,255,.0); }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══ HEADER ══ -->
+<header>
+  <div class="brand-wrap">
+    <div class="brand-icon">
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M12 2v3M12 19v3M2 12h3M19 12h3M5.22 5.22l2.12 2.12M16.66 16.66l2.12 2.12M5.22 18.78l2.12-2.12M16.66 7.34l2.12-2.12"/>
+      </svg>
+    </div>
+    <div class="brand-text">
+      <span class="brand-name">Nexus</span>
+      <span class="brand-sub">ENV // DHT11</span>
+    </div>
+  </div>
+
+  <nav class="nav-links">
+    <button class="nav-link active" onclick="showPage('index')">
+      <span class="status-dot"></span>
+      &nbsp;Dashboard
+    </button>
+    <button class="nav-link" onclick="showPage('controls')">
+      Controls
+    </button>
+  </nav>
+
+  <div class="sys-info">
+    <div class="sys-stat">
+      <span class="sys-stat-label">System</span>
+      <span class="sys-stat-val">ONLINE</span>
+    </div>
+    <div class="sys-stat">
+      <span class="sys-stat-label">Node</span>
+      <span class="sys-stat-val">DHT-01</span>
+    </div>
+  </div>
+</header>
+
+<!-- ══════════════════════
+     DASHBOARD PAGE
+══════════════════════ -->
+<div class="page active" id="page-index">
+  <div class="container">
+
+    <div class="page-header">
+      <div class="page-title-wrap">
+        <span class="page-breadcrumb">// ENV MONITOR</span>
+        <h1 class="page-title">Dashboard</h1>
+      </div>
+    </div>
+
+    <!-- Filter Strip -->
+    <div class="filter-strip">
+      <div class="filter-group">
+        <span class="filter-label">Date</span>
+        <input type="date" id="dateInput" />
+      </div>
+      <div class="filter-group">
+        <span class="filter-label">From</span>
+        <select id="startHour"><option value="">All hours</option></select>
+      </div>
+      <div class="filter-group">
+        <span class="filter-label">To</span>
+        <select id="endHour"><option value="">All hours</option></select>
+      </div>
+
+      <div class="quick-chips">
+        <button class="chip" onclick="setRange(0,5)">Night</button>
+        <button class="chip" onclick="setRange(6,11)">Morning</button>
+        <button class="chip" onclick="setRange(12,17)">Afternoon</button>
+        <button class="chip" onclick="setRange(18,23)">Evening</button>
+        <button class="chip" onclick="setRange('','')">Full Day</button>
+
+        <label class="live-toggle-wrap on" id="liveLabel">
+          <input type="checkbox" id="realtimeToggle" checked>
+          <span class="live-dot-sm"></span>
+          Live
+        </label>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-grid">
+      <div class="stat-card c-amber">
+        <div class="stat-card-corner tl"></div>
+        <div class="stat-card-corner br"></div>
+        <div class="stat-eyebrow">
+          Temp // Live
+          <span class="live-badge">● LIVE</span>
+        </div>
+        <div class="stat-val" id="curTemp">--<span class="stat-unit">°C</span></div>
+        <div class="stat-corner">CURRENT</div>
+      </div>
+      <div class="stat-card c-cyan">
+        <div class="stat-card-corner tl"></div>
+        <div class="stat-card-corner br"></div>
+        <div class="stat-eyebrow">
+          Humidity // Live
+          <span class="live-badge">● LIVE</span>
+        </div>
+        <div class="stat-val" id="curHum">--<span class="stat-unit">%</span></div>
+        <div class="stat-corner">CURRENT</div>
+      </div>
+      <div class="stat-card c-red">
+        <div class="stat-card-corner tl"></div>
+        <div class="stat-card-corner br"></div>
+        <div class="stat-eyebrow">Max Temp</div>
+        <div class="stat-val" id="maxTemp">--<span class="stat-unit">°C</span></div>
+        <div class="stat-corner">PEAK</div>
+      </div>
+      <div class="stat-card c-purple">
+        <div class="stat-card-corner tl"></div>
+        <div class="stat-card-corner br"></div>
+        <div class="stat-eyebrow">Max Humidity</div>
+        <div class="stat-val" id="maxHum">--<span class="stat-unit">%</span></div>
+        <div class="stat-corner">PEAK</div>
+      </div>
+    </div>
+
+    <!-- Chart -->
+    <div class="chart-panel">
+      <div class="chart-topbar">
+        <div>
+          <span class="chart-title">Sensor Timeline<span>// 1-MIN AVERAGES</span></span>
+        </div>
+        <span class="data-pill" id="dataCount">Waiting for data…</span>
+      </div>
+      <div class="chart-body">
+        <canvas id="dhtChart" height="70"></canvas>
+      </div>
+    </div>
+
+    <!-- Table -->
+    <div class="table-panel">
+      <div class="table-topbar">
+        <span class="table-topbar-title">Reading History</span>
+        <div class="tbl-controls">
+          <input type="text" class="tbl-input" id="searchBox" placeholder="Filter by time…" style="width:150px;">
+          <select class="tbl-select" id="rowsPerPage">
+            <option value="10">10 rows</option>
+            <option value="25" selected>25 rows</option>
+            <option value="50">50 rows</option>
+            <option value="100">100 rows</option>
+            <option value="all">All rows</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>Temperature</th>
+              <th>Humidity</th>
+            </tr>
+          </thead>
+          <tbody id="historyTable">
+            <tr><td colspan="3" class="empty-state">// select a date to load readings</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div id="paginationControls" class="pag-row" style="display:none;">
+        <small>Showing <span id="showingRange">0</span> of <span id="totalRows">0</span> entries</small>
+        <div class="pag-btns">
+          <button class="pag-btn" id="prevPage" disabled>← Prev</button>
+          <span class="pag-info">Page <span id="currentPage">1</span> / <span id="totalPages">1</span></span>
+          <button class="pag-btn" id="nextPage" disabled>Next →</button>
+        </div>
+      </div>
+
+      <div id="noData" class="empty-state" style="display:none;">// no readings for selected filters</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══════════════════════
+     CONTROLS PAGE
+══════════════════════ -->
+<div class="page" id="page-controls">
+  <div class="container">
+
+    <div class="page-header">
+      <div class="page-title-wrap">
+        <span class="page-breadcrumb">// OUTPUT CONTROL</span>
+        <h1 class="page-title">Controls</h1>
+      </div>
+    </div>
+
+    <div class="controls-layout">
+
+      <!-- LED Panel -->
+      <div class="ctrl-panel">
+        <div class="ctrl-panel-head">
+          <div class="ctrl-panel-head-left">
+            <h3>LED Array</h3>
+            <p>// toggle nodes on or off</p>
+          </div>
+        </div>
+        <div class="ctrl-panel-body">
+
+          <div class="led-row red" id="row-LED1">
+            <div class="led-info">
+              <div class="led-orb"></div>
+              <div class="led-text-wrap">
+                <div class="led-name">LED 1 </div>
+                <div class="led-status" id="state-LED1">OFFLINE</div>
+              </div>
+            </div>
+            <button class="toggle" id="toggle-LED1" onclick="toggleDevice('LED1')"></button>
+          </div>
+
+          <div class="led-row green" id="row-LED2">
+            <div class="led-info">
+              <div class="led-orb"></div>
+              <div class="led-text-wrap">
+                <div class="led-name">LED 2 </div>
+                <div class="led-status" id="state-LED2">OFFLINE</div>
+              </div>
+            </div>
+            <button class="toggle" id="toggle-LED2" onclick="toggleDevice('LED2')"></button>
+          </div>
+
+          <div class="led-row blue" id="row-LED3">
+            <div class="led-info">
+              <div class="led-orb"></div>
+              <div class="led-text-wrap">
+                <div class="led-name">LED 3 </div>
+                <div class="led-status" id="state-LED3">OFFLINE</div>
+              </div>
+            </div>
+            <button class="toggle" id="toggle-LED3" onclick="toggleDevice('LED3')"></button>
+          </div>
+
+          <div class="led-row yellow" id="row-LED4">
+            <div class="led-info">
+              <div class="led-orb"></div>
+              <div class="led-text-wrap">
+                <div class="led-name">LED 4 </div>
+                <div class="led-status" id="state-LED4">OFFLINE</div>
+              </div>
+            </div>
+            <button class="toggle" id="toggle-LED4" onclick="toggleDevice('LED4')"></button>
+          </div>
+
+          <div class="led-row white" id="row-LED5">
+            <div class="led-info">
+              <div class="led-orb"></div>
+              <div class="led-text-wrap">
+                <div class="led-name">LED 5 </div>
+                <div class="led-status" id="state-LED5">OFFLINE</div>
+              </div>
+            </div>
+            <button class="toggle" id="toggle-LED5" onclick="toggleDevice('LED5')"></button>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Quick Actions -->
+      <div>
+        <div class="ctrl-panel">
+          <div class="ctrl-panel-head">
+            <div class="ctrl-panel-head-left">
+              <h3>Quick Actions</h3>
+              <p>// batch control</p>
+            </div>
+          </div>
+          <div class="ctrl-panel-body" style="padding: 20px;">
+            <span class="section-label">Batch Control</span>
+            <button class="action-btn all-on" onclick="allOn()">⬤ Activate All</button>
+            <button class="action-btn all-off" onclick="allOff()">⬤ Deactivate All</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+  // ── Firebase ──
+  const firebaseConfig = {
+    apiKey: "AIzaSyC7D9NY1ieDYSxDsIIyyVIakMHopOVt8Kw",
+  authDomain: "marriannesubaldo-2d8bb.firebaseapp.com",
+  databaseURL: "https://marriannesubaldo-2d8bb-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "marriannesubaldo-2d8bb",
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+
+  // ── Navigation ──
+  function showPage(name) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+    document.getElementById(`page-${name}`).classList.add('active');
+    document.querySelector(`[onclick="showPage('${name}')"]`).classList.add('active');
+  }
+
+  // ── LED Controls ──
+  function toggleDevice(device) {
+    const row = document.getElementById(`row-${device}`);
+    const isOn = row.classList.contains('on');
+    db.ref(`Controls/${device}`).set({ state: isOn ? 0 : 1, timestamp: Date.now() });
+  }
+
+  function allOff() {
+    ['LED1','LED2','LED3','LED4','LED5'].forEach(d =>
+      db.ref(`Controls/${d}`).set({ state: 0, timestamp: Date.now() })
+    );
+  }
+
+  function allOn() {
+    ['LED1','LED2','LED3','LED4','LED5'].forEach(d =>
+      db.ref(`Controls/${d}`).set({ state: 1, timestamp: Date.now() })
+    );
+  }
+
+  ['LED1','LED2','LED3','LED4','LED5'].forEach(device => {
+    db.ref(`Controls/${device}`).on('value', snap => {
+      const data = snap.val();
+      const row    = document.getElementById(`row-${device}`);
+      const toggle = document.getElementById(`toggle-${device}`);
+      const state  = document.getElementById(`state-${device}`);
+
+      if (!data || data.state === undefined) {
+        db.ref(`Controls/${device}`).set({ state: 0, timestamp: Date.now() });
+        return;
+      }
+
+      if (data.state === 1) {
+        row.classList.add('on');
+        toggle.classList.add('on');
+        state.textContent = 'ONLINE';
+      } else {
+        row.classList.remove('on');
+        toggle.classList.remove('on');
+        state.textContent = 'OFFLINE';
+      }
+    });
+  });
+
+  // ── Chart ──
+  const labels = [], tempData = [], humData = [];
+  const dhtChart = new Chart(document.getElementById('dhtChart').getContext('2d'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Temperature (°C)',
+          data: tempData,
+          borderColor: '#ffb800',
+          backgroundColor: 'rgba(255,184,0,.06)',
+          fill: true, tension: .4, pointRadius: 2, pointHoverRadius: 5,
+          pointBackgroundColor: '#ffb800',
+          borderWidth: 1.5
+        },
+        {
+          label: 'Humidity (%)',
+          data: humData,
+          borderColor: '#00e5ff',
+          backgroundColor: 'rgba(0,229,255,.05)',
+          fill: true, tension: .4, pointRadius: 2, pointHoverRadius: 5,
+          pointBackgroundColor: '#00e5ff',
+          borderWidth: 1.5
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: {
+        legend: {
+          position: 'top',
+          labels: {
+            color: '#4a6080',
+            font: { family: 'Space Mono', size: 11 },
+            boxWidth: 10, boxHeight: 10,
+            padding: 20
+          }
+        },
+        tooltip: {
+          mode: 'index', intersect: false,
+          backgroundColor: '#0d1220',
+          borderColor: '#1e2d45',
+          borderWidth: 1,
+          titleColor: '#c8d8e8',
+          bodyColor: '#4a6080',
+          titleFont: { family: 'Space Mono', size: 11 },
+          bodyFont: { family: 'Space Mono', size: 11 }
+        }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          grid: { color: 'rgba(30,45,69,.6)' },
+          ticks: { color: '#4a6080', font: { family: 'Space Mono', size: 10 } },
+          border: { color: '#1e2d45' }
+        },
+        x: {
+          title: { display: true, text: 'TIME', color: '#2a3d5a', font: { family: 'Space Mono', size: 10 } },
+          grid: { display: false },
+          ticks: { color: '#4a6080', font: { family: 'Space Mono', size: 10 }, maxTicksLimit: 12 },
+          border: { color: '#1e2d45' }
+        }
+      }
+    }
+  });
+
+  // ── DOM refs ──
+  const dateInput      = document.getElementById('dateInput');
+  const startHour      = document.getElementById('startHour');
+  const endHour        = document.getElementById('endHour');
+  const realtimeToggle = document.getElementById('realtimeToggle');
+  const liveLabel      = document.getElementById('liveLabel');
+  const tbody          = document.getElementById('historyTable');
+  const searchBox      = document.getElementById('searchBox');
+  const rowsPerPage    = document.getElementById('rowsPerPage');
+  const prevBtn        = document.getElementById('prevPage');
+  const nextBtn        = document.getElementById('nextPage');
+  const pagControls    = document.getElementById('paginationControls');
+
+  let listener = null, allData = [], filtered = [], page = 1, rpp = 25;
+
+  dateInput.value = new Date().toISOString().split('T')[0];
+
+  for (let i = 0; i < 24; i++) {
+    const h = i.toString().padStart(2,'0');
+    startHour.innerHTML += `<option value="${h}">${h}:00</option>`;
+    endHour.innerHTML   += `<option value="${h}">${h}:59</option>`;
+  }
+
+  function setRange(s, e) {
+    startHour.value = s === '' ? '' : s.toString().padStart(2,'0');
+    endHour.value   = e === '' ? '' : e.toString().padStart(2,'0');
+    startListener();
+  }
+
+  function aggregateByMinute(data) {
+    const map = new Map();
+    [...data].reverse().forEach(p => {
+      const key = p.time.slice(0,5);
+      if (!map.has(key)) map.set(key, { temps:[], hums:[], ts: p.timestamp });
+      map.get(key).temps.push(p.temp);
+      map.get(key).hums.push(p.hum);
+    });
+    return [...map.entries()]
+      .map(([k,v]) => ({
+        time: k,
+        temp: parseFloat((v.temps.reduce((a,b)=>a+b,0)/v.temps.length).toFixed(1)),
+        hum:  parseFloat((v.hums.reduce((a,b)=>a+b,0)/v.hums.length).toFixed(1)),
+        timestamp: v.ts
+      }))
+      .sort((a,b) => a.timestamp - b.timestamp);
+  }
+
+  function startListener() {
+    const date = dateInput.value;
+    if (!date) return;
+    if (listener) listener.off();
+    labels.length = tempData.length = humData.length = 0;
+    allData = [];
+
+    listener = db.ref(`DHT11/${date}`);
+    listener.on('value', snap => {
+      if (!snap.exists()) { showEmpty(); return; }
+
+      const sh = startHour.value, eh = endHour.value;
+      const rows = [];
+
+      snap.forEach(hourNode => {
+        const h = parseInt(hourNode.key);
+        if (sh && h < parseInt(sh)) return;
+        if (eh && h > parseInt(eh)) return;
+        const hStr = hourNode.key;
+        hourNode.forEach(minNode => {
+          const m = minNode.key;
+          minNode.forEach(secNode => {
+            const s = secNode.key, d = secNode.val();
+            rows.push({
+              time: `${hStr}:${m}:${s}`,
+              temp: d.temperature,
+              hum:  d.humidity,
+              timestamp: new Date(`${date}T${hStr}:${m}:${s}`)
+            });
+          });
+        });
+      });
+
+      if (!rows.length) { showEmpty(); return; }
+
+      rows.sort((a,b) => b.timestamp - a.timestamp);
+      allData = rows; filtered = rows; page = 1;
+
+      const graphData = aggregateByMinute(rows);
+      labels.length = tempData.length = humData.length = 0;
+      graphData.forEach(p => { labels.push(p.time); tempData.push(p.temp); humData.push(p.hum); });
+
+      updateStats(rows);
+      dhtChart.update();
+      renderTable();
+
+      document.getElementById('noData').style.display = 'none';
+      document.getElementById('dataCount').textContent = `${graphData.length} MIN // ${rows.length} SAMPLES`;
+    });
+  }
+
+  function updateStats(data) {
+    const latest = data[0];
+    const temps = data.map(p => p.temp);
+    const hums  = data.map(p => p.hum);
+    document.getElementById('curTemp').innerHTML = `${latest.temp}<span class="stat-unit">°C</span>`;
+    document.getElementById('curHum').innerHTML  = `${latest.hum}<span class="stat-unit">%</span>`;
+    document.getElementById('maxTemp').innerHTML = `${Math.max(...temps).toFixed(1)}<span class="stat-unit">°C</span>`;
+    document.getElementById('maxHum').innerHTML  = `${Math.max(...hums).toFixed(1)}<span class="stat-unit">%</span>`;
+  }
+
+  function renderTable() {
+    if (!filtered.length) {
+      tbody.innerHTML = '<tr><td colspan="3" class="empty-state">// no matching records</td></tr>';
+      pagControls.style.display = 'none';
+      return;
+    }
+
+    const total  = filtered.length;
+    const perPage = rpp === 'all' ? total : parseInt(rpp);
+    const pages  = Math.ceil(total / perPage);
+    if (page > pages) page = pages;
+    if (page < 1) page = 1;
+
+    const start = (page-1)*perPage;
+    const end   = rpp === 'all' ? total : Math.min(start+perPage, total);
+    const slice = filtered.slice(start, end);
+
+    tbody.innerHTML = slice.map((p, i) => `
+      <tr${(start+i===0) ? ' class="latest-row"' : ''}>
+        <td><span class="tag-time">${p.time}</span></td>
+        <td><span class="tag-temp">${p.temp} °C</span></td>
+        <td><span class="tag-hum">${p.hum} %</span></td>
+      </tr>
+    `).join('');
+
+    document.getElementById('currentPage').textContent  = page;
+    document.getElementById('totalPages').textContent   = pages;
+    document.getElementById('totalRows').textContent    = total;
+    document.getElementById('showingRange').textContent = `${start+1}–${end}`;
+    prevBtn.disabled = page === 1;
+    nextBtn.disabled = page === pages || rpp === 'all';
+    pagControls.style.display = rpp === 'all' ? 'none' : 'flex';
+  }
+
+  function showEmpty() {
+    document.getElementById('noData').style.display = 'block';
+    document.getElementById('dataCount').textContent = '// NO DATA';
+    tbody.innerHTML = '<tr><td colspan="3" class="empty-state">// no readings for selected filters</td></tr>';
+    pagControls.style.display = 'none';
+    document.getElementById('curTemp').innerHTML  = '--<span class="stat-unit">°C</span>';
+    document.getElementById('curHum').innerHTML   = '--<span class="stat-unit">%</span>';
+    document.getElementById('maxTemp').innerHTML  = '--<span class="stat-unit">°C</span>';
+    document.getElementById('maxHum').innerHTML   = '--<span class="stat-unit">%</span>';
+  }
+
+  searchBox.addEventListener('input', () => {
+    const q = searchBox.value.toLowerCase();
+    filtered = q ? allData.filter(p => p.time.includes(q)) : allData;
+    page = 1; renderTable();
+  });
+
+  rowsPerPage.addEventListener('change', () => { rpp = rowsPerPage.value; page=1; renderTable(); });
+  prevBtn.addEventListener('click', () => { if(page>1){page--;renderTable();} });
+  nextBtn.addEventListener('click', () => { const t=Math.ceil(filtered.length/parseInt(rpp)); if(page<t){page++;renderTable();} });
+
+  realtimeToggle.addEventListener('change', () => {
+    liveLabel.classList.toggle('on', realtimeToggle.checked);
+    if (realtimeToggle.checked) startListener();
+    else { if(listener){listener.off();listener=null;} document.getElementById('dataCount').textContent += ' (PAUSED)'; }
+  });
+
+  dateInput.addEventListener('change', startListener);
+  startHour.addEventListener('change', startListener);
+  endHour.addEventListener('change', startListener);
+
+  startListener();
+</script>
+</body>
+</html>
